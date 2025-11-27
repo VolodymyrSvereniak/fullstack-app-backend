@@ -1,17 +1,20 @@
 import pg from "pg";
 import dotenv from "dotenv";
 
+type QueryArg = string | { sql: string; params?: any[] };
+
 dotenv.config();
 
 const isProduction = process.env.NODE_ENV === "production";
 
-let client: pg.Client | pg.Pool;
+let client: pg.Pool;
 
 if (isProduction) {
   client = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
   });
+  console.log("Using production Neon database");
 } else {
   client = new pg.Pool({
     user: process.env.PG_USER,
@@ -20,27 +23,17 @@ if (isProduction) {
     password: process.env.PG_PASSWORD,
     port: parseInt(process.env.PG_PORT || "5432"),
   });
+  console.log("Using local database");
 }
 
-type QueryObj = { sql: string; params?: any[] };
+export async function query(arg: QueryArg, paramsArg?: any[]) {
+  const text = typeof arg === "string" ? arg : arg.sql;
+  const params = typeof arg === "string" ? paramsArg : arg.params;
 
-export async function query(
-  sql: string,
-  params?: any[]
-): Promise<pg.QueryResult>;
-export async function query(q: QueryObj): Promise<pg.QueryResult>;
-
-export async function query(arg: string | QueryObj, paramsArg?: any[]) {
-  let text: string;
-  let params: any[] | undefined;
-
-  if (typeof arg === "string") {
-    text = arg;
-    params = paramsArg;
-  } else {
-    text = arg.sql;
-    params = arg.params;
+  try {
+    return await client.query(text, params);
+  } catch (error) {
+    console.error("Query error:", error);
+    throw error;
   }
-
-  return (client as any).query(text, params);
 }
