@@ -5,16 +5,15 @@ dotenv.config();
 
 const isProduction = process.env.NODE_ENV === "production";
 
-let db: pg.Client;
+let client: pg.Client | pg.Pool;
 
 if (isProduction) {
-  // Production (Render + Neon)
-  db = new pg.Client({
+  client = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }, // required for Neon
+    ssl: { rejectUnauthorized: false },
   });
 } else {
-  db = new pg.Client({
+  client = new pg.Pool({
     user: process.env.PG_USER,
     host: process.env.PG_HOST,
     database: process.env.PG_DATABASE,
@@ -23,11 +22,25 @@ if (isProduction) {
   });
 }
 
-db.connect()
-  .then(() => console.log("Database connected"))
-  .catch((err) => {
-    console.error("DB connection error:", err);
-    process.exit(1);
-  });
+type QueryObj = { sql: string; params?: any[] };
 
-export const query = (sql: string, params?: any[]) => db.query(sql, params);
+export async function query(
+  sql: string,
+  params?: any[]
+): Promise<pg.QueryResult>;
+export async function query(q: QueryObj): Promise<pg.QueryResult>;
+
+export async function query(arg: string | QueryObj, paramsArg?: any[]) {
+  let text: string;
+  let params: any[] | undefined;
+
+  if (typeof arg === "string") {
+    text = arg;
+    params = paramsArg;
+  } else {
+    text = arg.sql;
+    params = arg.params;
+  }
+
+  return (client as any).query(text, params);
+}
